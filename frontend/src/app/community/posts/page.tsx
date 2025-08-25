@@ -1,60 +1,59 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { getCurrentUser, getIdTokenNoParam } from "@/utils";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { getCurrentUser, getIdTokenNoParam } from "@/utils"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 interface Timestamp {
-  _seconds: number;
-  _nanoseconds: number;
+  _seconds: number
+  _nanoseconds: number
 }
 
 interface Post {
-  id: string;
-  timeAgo: string;
-  title: string;
-  content: string;
-  image?: string;
-  likes: number;
-  dislikes: number;
-  comments?: any[];
+  id: string
+  timeAgo: string
+  title: string
+  content: string
+  image?: string
+  likes: number
+  dislikes: number
+  comments?: any[]
 }
 
 export interface Community {
-  communityId: string;
-  communityName: string;
-  communityDescription: string;
-  communityType: string;
-  communityTopics: string[];
-  communityRules: string[];
-  communityProfilePhoto: string;
-  communityBackgroundPhoto: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-  memberCount: number;
-  posts?: Post[];
+  communityId: string
+  communityName: string
+  communityDescription: string
+  communityType: string
+  communityTopics: string[]
+  communityRules: string[]
+  communityProfilePhoto: string
+  communityBackgroundPhoto: string
+  createdAt: Timestamp
+  updatedAt: Timestamp
+  memberCount: number
+  posts?: Post[]
 }
 
 interface JoinedPostsResponse {
-  message: string;
-  communities: Community[];
+  message: string
+  communities: Community[]
 }
 
 export default function AllPostsPage() {
-  const [allPosts, setAllPosts] = useState<(Post & { communityId: string; communityName: string })[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const router = useRouter();
+  const [allPosts, setAllPosts] = useState<(Post & { communityId: string; communityName: string })[]>([])
+  const [loading, setLoading] = useState<boolean>(false)
+  const router = useRouter()
 
   useEffect(() => {
     const fetchAllPosts = async (): Promise<void> => {
-      setLoading(true);
+      setLoading(true)
       try {
-        const currentUser = await getCurrentUser();
-        if (!currentUser) return;
-        const idToken = await getIdTokenNoParam();
+        const currentUser = await getCurrentUser()
+        if (!currentUser) return
+        const idToken = await getIdTokenNoParam()
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/community/joined-posts?userId=${currentUser.uid}`,
           {
@@ -63,42 +62,42 @@ export default function AllPostsPage() {
               Authorization: `Bearer ${idToken}`,
               "Content-Type": "application/json",
             },
-          }
-        );
-        if (!res.ok) toast.error("Failed to fetch joined posts");
-        const data: JoinedPostsResponse = await res.json();
+          },
+        )
+        if (!res.ok) toast.error("Failed to fetch joined posts")
+        const data: JoinedPostsResponse = await res.json()
         // Flatten posts: get all posts from every community.
-        const posts: (Post & { communityId: string; communityName: string })[] = [];
-        (data.communities || []).forEach((community) => {
+        const posts: (Post & { communityId: string; communityName: string })[] = []
+        ;(data.communities || []).forEach((community) => {
           if (community.posts && community.posts.length > 0) {
             community.posts.forEach((post) => {
               posts.push({
                 ...post,
                 communityId: community.communityId,
                 communityName: community.communityName,
-              });
-            });
+              })
+            })
           }
-        });
-        setAllPosts(posts);
+        })
+        setAllPosts(posts)
       } catch (error) {
-        toast.error("Error fetching all posts");
+        toast.error("Error fetching all posts")
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
+    }
 
-    fetchAllPosts();
-  }, []);
+    fetchAllPosts()
+  }, [])
 
   return (
-    <div className="bg-gradient-to-b from-blue-50 to-white min-h-screen">
+    <div className="bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 min-h-screen">
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col gap-6">
           {/* Header */}
           <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-bold text-blue-600">All Community Posts</h1>
-            <p className="text-blue-600/80">
+            <h1 className="text-3xl font-bold text-blue-600 dark:text-blue-400">All Community Posts</h1>
+            <p className="text-blue-600/80 dark:text-blue-400/80">
               Browse posts from all the communities you've joined.
             </p>
           </div>
@@ -106,14 +105,15 @@ export default function AllPostsPage() {
           <div className="flex flex-col md:flex-row gap-6">
             {/* About BlueCollar Component - on mobile, appears on top */}
             <div className="order-1 w-full md:w-[30%]">
-              <div className="bg-white rounded-lg shadow p-4">
-                <h2 className="text-lg font-semibold text-blue-600 mb-4">About BlueCollar</h2>
-                <p className="text-gray-700 mb-4">
-                  BlueCollar is a community platform for blue collar workers to find jobs, share experiences, and connect with others in their industry.
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+                <h2 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-4">About BlueCollar</h2>
+                <p className="text-gray-700 dark:text-gray-300 mb-4">
+                  BlueCollar is a community platform for blue collar workers to find jobs, share experiences, and
+                  connect with others in their industry.
                 </p>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="14"
@@ -124,7 +124,7 @@ export default function AllPostsPage() {
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="text-blue-600"
+                        className="text-blue-600 dark:text-blue-400"
                       >
                         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
                         <circle cx="9" cy="7" r="4" />
@@ -132,7 +132,7 @@ export default function AllPostsPage() {
                         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                       </svg>
                     </div>
-                    <span className="text-gray-700">
+                    <span className="text-gray-700 dark:text-gray-300">
                       {/** Total members from all communities */}
                       {/* Adjust if necessary */}
                       {`${
@@ -141,7 +141,7 @@ export default function AllPostsPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="14"
@@ -152,7 +152,7 @@ export default function AllPostsPage() {
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="text-blue-600"
+                        className="text-blue-600 dark:text-blue-400"
                       >
                         <rect width="18" height="18" x="3" y="3" rx="2" />
                         <path d="M7 7h.01" />
@@ -166,62 +166,62 @@ export default function AllPostsPage() {
                         <path d="M17 17h.01" />
                       </svg>
                     </div>
-                    <span className="text-gray-700">{allPosts.length} communities</span>
+                    <span className="text-gray-700 dark:text-gray-300">{allPosts.length} communities</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
+                        width="16"
+                        height="16"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        className="text-blue-600"
+                        className="text-blue-600 dark:text-blue-400"
                       >
                         <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z" />
                         <path d="M10 2c1 .5 2 2 2 5" />
                       </svg>
                     </div>
-                    <span className="text-gray-700">Created in 2023</span>
+                    <span className="text-gray-700 dark:text-gray-300">Created in 2023</span>
                   </div>
                 </div>
               </div>
             </div>
             {/* Posts List */}
             <div className="order-2 w-full md:w-[70%]">
-              <div className="bg-white rounded-lg shadow p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
                 {loading ? (
-                  <p>Loading posts...</p>
+                  <p className="dark:text-gray-300">Loading posts...</p>
                 ) : (
                   <div className="space-y-4">
                     {allPosts.map((post) => (
                       <div
                         key={post.id}
-                        className="border border-blue-100 rounded-lg p-4 hover:border-blue-300 transition-colors"
+                        className="border border-blue-100 dark:border-gray-600 rounded-lg p-4 hover:border-blue-300 dark:hover:border-blue-500 transition-colors"
                       >
                         <div className="flex items-center gap-2 mb-2">
-                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+                          <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
                             {post.title.charAt(0)}
                           </div>
                           <Link
                             href={`/community/${post.communityId}`}
-                            className="text-blue-600 font-medium hover:underline"
+                            className="text-blue-600 dark:text-blue-400 font-medium hover:underline"
                           >
                             {post.communityName}
                           </Link>
-                          <span className="text-gray-500 text-sm">• {post.timeAgo}</span>
+                          <span className="text-gray-500 dark:text-gray-400 text-sm">• {post.timeAgo}</span>
                         </div>
                         <Link href={`/community/${post.communityId}/post/${post.id}`}>
-                          <h3 className="text-lg font-medium text-blue-600 mb-2">{post.title}</h3>
-                          <p className="text-gray-700 mb-3">{post.content}</p>
+                          <h3 className="text-lg font-medium text-blue-600 dark:text-blue-400 mb-2">{post.title}</h3>
+                          <p className="text-gray-700 dark:text-gray-300 mb-3">{post.content}</p>
                           {post.image && (
                             <div className="mb-3 rounded-lg overflow-hidden">
                               <img
-                                src={post.image}
+                                src={post.image || "/placeholder.svg"}
                                 alt={post.title}
                                 className="w-[90%] h-56 object-cover mx-auto rounded-xl"
                               />
@@ -229,8 +229,8 @@ export default function AllPostsPage() {
                           )}
                         </Link>
                         <div className="flex items-center gap-4 text-sm">
-                          <div className="flex items-center gap-1 text-gray-500">
-                            <button className="hover:text-blue-600 p-1">
+                          <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                            <button className="hover:text-blue-600 dark:hover:text-blue-400 p-1">
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 width="16"
@@ -249,8 +249,8 @@ export default function AllPostsPage() {
                             </button>
                             <span>{post.likes}</span>
                           </div>
-                          <div className="flex items-center gap-1 text-gray-500">
-                            <button className="hover:text-blue-600 p-1">
+                          <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                            <button className="hover:text-blue-600 dark:hover:text-blue-400 p-1">
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
                                 width="16"
@@ -269,7 +269,7 @@ export default function AllPostsPage() {
                             </button>
                             <span>{post.dislikes}</span>
                           </div>
-                          <div className="flex items-center gap-1 text-gray-500">
+                          <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
                               width="16"
@@ -297,5 +297,5 @@ export default function AllPostsPage() {
         </div>
       </div>
     </div>
-  );
+  )
 }

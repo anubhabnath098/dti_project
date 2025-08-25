@@ -198,7 +198,7 @@ export default function ProfileForm() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
               First Name*
             </label>
             <input
@@ -212,7 +212,7 @@ export default function ProfileForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
               Middle Name
             </label>
             <input
@@ -225,7 +225,7 @@ export default function ProfileForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
               Last Name*
             </label>
             <input
@@ -241,7 +241,7 @@ export default function ProfileForm() {
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
               Phone Number*
             </label>
             <input
@@ -255,7 +255,7 @@ export default function ProfileForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
               Email Address*
             </label>
             <input
@@ -270,7 +270,7 @@ export default function ProfileForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
             Residential Address*
           </label>
           <textarea
@@ -285,7 +285,7 @@ export default function ProfileForm() {
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
               Profession*
             </label>
             <input
@@ -299,7 +299,7 @@ export default function ProfileForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
               Gender*
             </label>
             <select
@@ -320,7 +320,7 @@ export default function ProfileForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
             Summary
           </label>
           <textarea
@@ -334,7 +334,7 @@ export default function ProfileForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
             Profile Photo
           </label>
           <input
@@ -357,7 +357,7 @@ export default function ProfileForm() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-400">
             Resume/CV
           </label>
           <input

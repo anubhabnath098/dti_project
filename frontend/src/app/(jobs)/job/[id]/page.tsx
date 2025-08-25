@@ -12,16 +12,22 @@ import { getJobPostById } from "@/actions/jobPost"
 import { useEffect, useState } from "react"
 import type { JobPost } from "@/types/jobpost"
 import GoogleMapDialog from "@/components/google-map-dialog"
+import { toast } from "sonner"
+import { getCurrentUser, getIdTokenNoParam } from "@/utils"
+import { useUser } from "@/context/userContext" 
 
 export default function JobDetailPage() {
   const params = useParams()
   const id = params.id as string
+  const { user } = useUser()
 
   const [job, setJob] = useState<JobPost | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [applied, setApplied] = useState(false)
-  const [isMapOpen, setIsMapOpen] = useState(false) // state to toggle the map dialog
+  const [isMapOpen, setIsMapOpen] = useState(false)
+  const [applyLoading, setApplyLoading] = useState(false)
+  const [checkingApplicationStatus, setCheckingApplicationStatus] = useState(false)
 
   useEffect(() => {
     async function loadJob() {
@@ -32,6 +38,9 @@ export default function JobDetailPage() {
           return
         }
         setJob(jobData)
+        if (user && user.role !== "employer") {
+          await checkApplicationStatus(jobData.id)
+        }
       } catch (err) {
         console.error("Error fetching job:", err)
         setError(true)
@@ -40,8 +49,108 @@ export default function JobDetailPage() {
       }
     }
 
-    loadJob()
-  }, [id])
+    if (user) {
+      loadJob()
+    }
+  }, [id, user])
+
+  const checkApplicationStatus = async (jobId: string) => {
+    try {
+      setCheckingApplicationStatus(true)
+      const idToken = await getIdTokenNoParam()
+      const currentUser = await getCurrentUser()
+      const userId = currentUser?.uid
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/job/check-application`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          worker_id: userId,
+          jobId: jobId,
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setApplied(result.exists)
+      }
+    } catch (error) {
+      console.error("Error checking application status:", error)
+    } finally {
+      setCheckingApplicationStatus(false)
+    }
+  }
+
+  const handleApply = async () => {
+    if (!job) return
+
+    try {
+      setApplyLoading(true)
+      const idToken = await getIdTokenNoParam()
+      const currentUser = await getCurrentUser()
+      const userId = currentUser?.uid
+      const formData = new FormData()
+      formData.append("jobId", job.id)
+      formData.append("worker_id", userId!)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/job/apply`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: formData,
+      })
+
+      if (response.ok) {
+        setApplied(true)
+        toast.success("Your job application has been submitted successfully!")
+      } else {
+        const errorData = await response.json()
+        toast.error(errorData.message || "Failed to submit application. Please try again.")
+      }
+    } catch (error) {
+      console.error("Error applying for job:", error)
+      toast.error("An error occurred while submitting your application.")
+    } finally {
+      setApplyLoading(false)
+    }
+  }
+
+  const handleWithdrawApplication = async () => {
+    if (!job) return
+
+    try {
+      setApplyLoading(true)
+      const idToken = await getIdTokenNoParam()
+      const currentUser = await getCurrentUser()
+      const userId = currentUser?.uid
+      const formData = new FormData()
+      formData.append("jobId", job.id)
+      formData.append("worker_id", userId!)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/job/application/delete`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: formData,
+      })
+
+      if (response.ok) {
+        setApplied(false)
+        toast.success("Your job application has been withdrawn successfully.")
+      } else {
+        const errorData = await response.json()
+        toast.error(errorData.message || "Failed to withdraw application. Please try again.")
+      }
+    } catch (error) {
+      console.error("Error withdrawing application:", error)
+      toast("An error occurred while withdrawing your application.")
+    } finally {
+      setApplyLoading(false)
+    }
+  }
 
   if (loading) {
     return <LoadingState />
@@ -52,33 +161,10 @@ export default function JobDetailPage() {
   }
 
   const formattedLocation = job.location
-    ? [
-        job.location.city,
-        job.location.district,
-        job.location.state,
-        job.location.pincode,
-      ]
-        .filter(Boolean)
-        .join(", ")
+    ? [job.location.city, job.location.district, job.location.state, job.location.pincode].filter(Boolean).join(", ")
     : null
 
-  const handleApply = () => {
-    if (typeof window !== "undefined") {
-      // Get existing jobs from localStorage
-      const existingJobs = JSON.parse(localStorage.getItem("jobs") || "[]")
-
-      // Append new job data
-      const updatedJobs = [...existingJobs, job]
-
-      // Save back to localStorage
-      localStorage.setItem("jobs", JSON.stringify(updatedJobs))
-      setApplied(true)
-    }
-  }
-
-  // Determine the location string to pass to the map dialog.
   const mapLocation = (job.place_of_work || "") + ", " + (formattedLocation || "")
-  console.log(mapLocation)
 
   return (
     <div className="container mx-auto py-8 px-4 md:px-6 max-w-4xl">
@@ -131,12 +217,7 @@ export default function JobDetailPage() {
                     {job.place_of_work || "Not specified"}
                     {formattedLocation && <span> - {formattedLocation}</span>}
                   </p>
-                  <Button
-                    onClick={() => setIsMapOpen(true)}
-                    variant="outline"
-                    size="sm"
-                    className="mt-2 bg-blue-200"
-                  >
+                  <Button onClick={() => setIsMapOpen(true)} variant="outline" size="sm" className="mt-2 bg-blue-200">
                     View Map
                   </Button>
                 </div>
@@ -203,12 +284,32 @@ export default function JobDetailPage() {
         </CardContent>
 
         <CardFooter className="flex flex-col sm:flex-row gap-4 pt-2 pb-6 px-6">
-          <Button
-            onClick={handleApply}
-            className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium py-6 sm:py-2 text-base"
-          >
-            {applied ? "✔ Applied" : "Apply Now"}
-          </Button>
+          {user?.role === "employer" ? (
+            <div className="w-full text-center text-muted-foreground py-4">
+              <p>Employers cannot apply for jobs</p>
+            </div>
+          ) : checkingApplicationStatus ? (
+            <Button disabled className="w-full sm:w-auto py-6 sm:py-2 text-base">
+              Checking Status...
+            </Button>
+          ) : applied ? (
+            <Button
+              onClick={handleWithdrawApplication}
+              disabled={applyLoading}
+              variant="outline"
+              className="w-full sm:w-auto py-6 sm:py-2 text-base border-red-200 text-red-600 hover:bg-red-50 bg-transparent"
+            >
+              {applyLoading ? "Withdrawing..." : "Withdraw Application"}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleApply}
+              disabled={applyLoading}
+              className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium py-6 sm:py-2 text-base"
+            >
+              {applyLoading ? "Applying..." : "Apply Now"}
+            </Button>
+          )}
         </CardFooter>
       </Card>
 
@@ -221,7 +322,6 @@ export default function JobDetailPage() {
         </p>
       )}
 
-      {/* Google Map Dialog */}
       <GoogleMapDialog
         isOpen={isMapOpen}
         onClose={() => setIsMapOpen(false)}

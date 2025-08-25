@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Send, Bot, User2, Briefcase, Clock } from "lucide-react"
+import { Send, Bot, User2, Briefcase, Clock, Plus } from "lucide-react"
 import { motion } from "framer-motion"
 import { v4 as uuidv4 } from "uuid"
 import ReactMarkdown from "react-markdown"
@@ -23,8 +23,12 @@ interface Message {
   isLoading?: boolean
 }
 
-const CHUNK_TIMEOUT = 30000 // 30 seconds without data
-const MAX_RETRIES = 3
+interface ChatResponse {
+  answer: string
+  session_id: string
+  used_context: boolean
+  sources: Array<{ [key: string]: any }>
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([
@@ -37,15 +41,10 @@ export default function ChatPage() {
   ])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  // Refs for streaming
-  const eventSourceRef = useRef<EventSource | null>(null)
-  const chunkTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const retryCountRef = useRef<number>(0)
-  const thread_id = useRef<string>(uuidv4())
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -57,13 +56,6 @@ export default function ChatPage() {
     inputRef.current?.focus()
   }, [])
 
-  // Cleanup the stream on component unmount
-  useEffect(() => {
-    return () => {
-      cleanupStream()
-    }
-  }, [])
-
   // Prevent body scrolling
   useEffect(() => {
     document.body.style.overflow = "hidden"
@@ -72,63 +64,23 @@ export default function ChatPage() {
     }
   }, [])
 
-  const cleanupStream = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-      eventSourceRef.current = null
-    }
-    if (chunkTimeoutRef.current) {
-      clearTimeout(chunkTimeoutRef.current)
-      chunkTimeoutRef.current = null
-    }
-    setIsLoading(false)
+  const handleNewChat = () => {
+    setSessionId(null)
+    setMessages([
+      {
+        id: "welcome-message",
+        role: "assistant",
+        content: "Hello! I'm your job search assistant. How can I help you today?",
+        timestamp: new Date(),
+      },
+    ])
+    setInput("")
+    inputRef.current?.focus()
   }
 
-  const startChunkTimeout = (assistantMessageId: string) => {
-    if (chunkTimeoutRef.current) {
-      clearTimeout(chunkTimeoutRef.current)
-    }
-    chunkTimeoutRef.current = setTimeout(() => {
-      console.error("No data received for 30 seconds")
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? {
-                ...msg,
-                content: msg.content + "\n[Error: Response timeout - No data received for 30 seconds]",
-                error: true,
-                isLoading: false,
-              }
-            : msg,
-        ),
-      )
-      cleanupStream()
-    }, CHUNK_TIMEOUT)
-  }
-
-  const handleStreamError = (assistantMessageId: string, errorMsg: string) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === assistantMessageId
-          ? {
-              ...msg,
-              content: msg.content + `\n[Error: ${errorMsg}]`,
-              error: true,
-              isLoading: false,
-            }
-          : msg,
-      ),
-    )
-    cleanupStream()
-  }
-
-  // Handle sending a message
   const handleSendMessage = async (text = input) => {
-    if (!text.trim()) return
+    if (!text.trim() || isLoading) return
 
-    // Reset any existing stream and retry count
-    cleanupStream()
-    retryCountRef.current = 0
     setIsLoading(true)
 
     // Create a new user message
@@ -154,58 +106,64 @@ export default function ChatPage() {
     setInput("")
 
     try {
-      // Open a connection to your chatbot backend using EventSource
-      console.log("before sending request", text)
-      const url = `${process.env.NEXT_PUBLIC_CHAT_URL}/api/stream-prompt?thread_id=${
-        thread_id.current
-      }&prompt=${encodeURIComponent(text)}`
-      const eventSource = new EventSource(url)
-      eventSourceRef.current = eventSource
-
-      let fullMessage = ""
-
-      eventSource.onmessage = (event) => {
-        try {
-          const content = event.data
-          if (content) {
-            // Reset the chunk timeout every time data is received
-            startChunkTimeout(assistantMessageId)
-
-            // If the backend sends an error message, handle it
-            if (content.includes("[Error:")) {
-              handleStreamError(assistantMessageId, content)
-              return
-            }
-
-            // Append the chunk to the full message and update the assistant message
-            fullMessage += content
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessageId ? { ...msg, content: fullMessage, isLoading: false } : msg,
-              ),
-            )
-          }
-        } catch (error) {
-          console.error("Error processing stream message:", error)
-          handleStreamError(assistantMessageId, "Failed to process response")
-        }
+      const requestBody: { question: string; session_id?: string } = {
+        question: text,
       }
 
-      eventSource.onerror = (error) => {
-        console.error("Stream error:", error)
-        retryCountRef.current++
-        if (retryCountRef.current >= MAX_RETRIES) {
-          handleStreamError(assistantMessageId, "Connection failed after multiple retries")
-        }
+      // Include session_id if we have one
+      if (sessionId) {
+        requestBody.session_id = sessionId
       }
 
-      // Listen for a custom "done" event to clean up
-      eventSource.addEventListener("done", () => {
-        cleanupStream()
+      const response = await fetch(`${process.env.NEXT_PUBLIC_CHAT_URL}/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
       })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data: ChatResponse = await response.json()
+
+      // Update session_id from response
+      if (data.session_id) {
+        setSessionId(data.session_id)
+      }
+
+      // Update the assistant message with the response
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: data.answer,
+                isLoading: false,
+              }
+            : msg,
+        ),
+      )
     } catch (error) {
-      console.error("Error connecting to stream:", error)
-      handleStreamError(assistantMessageId, "Failed to establish connection")
+      console.error("Error sending message:", error)
+
+      // Update the assistant message with error
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: "Sorry, I encountered an error while processing your request. Please try again.",
+                error: true,
+                isLoading: false,
+              }
+            : msg,
+        ),
+      )
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -273,7 +231,7 @@ export default function ChatPage() {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4 pt-16 pb-20 md:pt-20 md:pb-4 overflow-hidden bg-background">
-      <div className="w-full max-w-4xl h-[calc(100vh-12rem)] md:h-[min(800px,calc(100vh-6rem))] flex">
+      <div className="w-full max-w-4xl h-[calc(100vh-12rem)] md:h-[min(800px,calc(100vh-12rem))] flex">
         <Card className="border rounded-xl shadow-lg overflow-hidden bg-gradient-to-b from-background to-muted/30 w-full h-full flex flex-col">
           <div className="flex flex-col h-full">
             {/* Chat header */}
@@ -299,10 +257,21 @@ export default function ChatPage() {
                     </div>
                   </div>
                 </div>
-                <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                  <Briefcase className="h-3 w-3 mr-1" />
-                  Job Expert
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                    <Briefcase className="h-3 w-3 mr-1" />
+                    Job Expert
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNewChat}
+                    className="bg-white/80 dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    New Chat
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -416,4 +385,3 @@ export default function ChatPage() {
     </div>
   )
 }
-

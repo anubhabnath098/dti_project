@@ -1,118 +1,109 @@
-"use client";
-import { useState, useEffect, FormEvent } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import CommentItem from "@/components/comment-item";
-import { getIdTokenNoParam, getCurrentUser } from "@/utils";
-import { Blob } from "buffer";
-import { toast } from "sonner";
+"use client"
+import { useState, useEffect, type FormEvent } from "react"
+import { useParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import CommentItem from "@/components/comment-item"
+import { getIdTokenNoParam, getCurrentUser } from "@/utils"
+import { toast } from "sonner"
 
 // Interfaces for the post and comment
 interface Comment {
-  id: string;
-  author: string;
-  content: string;
-  timeAgo: string;
-  likes: number;
-  dislikes: number;
+  id: string
+  author: string
+  content: string
+  timeAgo: string
+  likes: number
+  dislikes: number
 }
 
 interface CommunityPost {
-  communityId: string;
-  id: string;
-  title: string;
-  content: string;
-  author: string;
-  timeAgo: string;
-  likes: number;
-  dislikes: number;
-  image: string | null;
-  comments: Comment[];
-  createdAt: any;
-  updatedAt: any;
+  communityId: string
+  id: string
+  title: string
+  content: string
+  author: string
+  timeAgo: string
+  likes: number
+  dislikes: number
+  image: string | null
+  comments: Comment[]
+  createdAt: any
+  updatedAt: any
 }
 
-
 export default function PostPage() {
-  const { id, postId } = useParams();
-  const [post, setPost] = useState<CommunityPost | null>(null);
-  const [commentContent, setCommentContent] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { id, postId } = useParams()
+  const [post, setPost] = useState<CommunityPost | null>(null)
+  const [commentContent, setCommentContent] = useState("")
+  const [loading, setLoading] = useState(false)
 
   // Function to fetch the post from the API
   const fetchPost = async () => {
     try {
-      const token = await getIdTokenNoParam();
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/community/get-post?postId=${postId}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      const data = await res.json();
+      const token = await getIdTokenNoParam()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/community/get-post?postId=${postId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      const data = await res.json()
       if (res.ok) {
-        setPost(data.post);
+        setPost(data.post)
       } else {
-        toast.error("Error fetching post");
+        toast.error("Error fetching post")
       }
     } catch (error) {
-      toast.error("Error fetching post");
+      toast.error("Error fetching post")
     }
-  };
+  }
 
   useEffect(() => {
-    fetchPost();
-  }, [postId]);
+    fetchPost()
+  }, [postId])
 
   // Handle comment submission
   const handleCommentSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!commentContent.trim()) return;
+    e.preventDefault()
+    if (!commentContent.trim()) return
 
-    setLoading(true);
+    setLoading(true)
     try {
-      const token = await getIdTokenNoParam();
-      const currentUser = await getCurrentUser();
+      const token = await getIdTokenNoParam()
+      const currentUser = await getCurrentUser()
 
       if (token && currentUser) {
         const payload = {
           userId: currentUser?.email,
           postId: postId,
           content: commentContent,
-        };
+        }
 
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/community/add-comment`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(payload),
-          }
-        );
-        const data = await res.json();
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/community/add-comment`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        })
+        const data = await res.json()
         if (res.ok) {
           // re-fetch the post to update the comments
-          await fetchPost();
-          setCommentContent("");
-          toast.success("Comment added successfully");
+          await fetchPost()
+          setCommentContent("")
+          toast.success("Comment added successfully")
         } else {
-          toast.error("Error adding comment");
+          toast.error("Error adding comment")
         }
       }
     } catch (error) {
-      toast.error("Error adding comment");
+      toast.error("Error adding comment")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   // If post is not loaded yet, show a simple loading state
   if (!post) {
@@ -120,20 +111,20 @@ export default function PostPage() {
       <div className="min-h-screen flex items-center justify-center">
         <p>Loading post...</p>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="bg-gradient-to-b from-blue-50 to-white min-h-screen">
+    <div className="bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 min-h-screen">
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">
+              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold">
                 {post.author.charAt(0)}
               </div>
               <div>
-                <div className="flex items-center text-xs text-gray-500">
+                <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
                   <span>Posted by {post.author}</span>
                   <span className="mx-1">•</span>
                   <span>{post.timeAgo}</span>
@@ -141,24 +132,18 @@ export default function PostPage() {
               </div>
             </div>
 
-            <h1 className="text-2xl font-bold text-blue-600 mb-4">
-              {post.title}
-            </h1>
-            <p className="text-gray-700 mb-6">{post.content}</p>
+            <h1 className="text-2xl font-bold text-blue-600 dark:text-blue-400 mb-4">{post.title}</h1>
+            <p className="text-gray-700 dark:text-gray-300 mb-6">{post.content}</p>
 
             {post.image && (
               <div className="mb-6 rounded-lg overflow-hidden">
-                <img
-                  src={post.image || "/placeholder.svg"}
-                  alt={post.title}
-                  className="w-full h-auto"
-                />
+                <img src={post.image || "/placeholder.svg"} alt={post.title} className="w-full h-auto" />
               </div>
             )}
 
-            <div className="flex items-center gap-4 border-t border-b border-blue-100 py-3 mb-6">
-              <div className="flex items-center gap-1 text-gray-500">
-                <button className="hover:text-blue-600 p-1">
+            <div className="flex items-center gap-4 border-t border-b border-blue-100 dark:border-gray-600 py-3 mb-6">
+              <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                <button className="hover:text-blue-600 dark:hover:text-blue-400 p-1">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="20"
@@ -177,8 +162,8 @@ export default function PostPage() {
                 </button>
                 <span>{post.likes}</span>
               </div>
-              <div className="flex items-center gap-1 text-gray-500">
-                <button className="hover:text-blue-600 p-1">
+              <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
+                <button className="hover:text-blue-600 dark:hover:text-blue-400 p-1">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="20"
@@ -197,7 +182,7 @@ export default function PostPage() {
                 </button>
                 <span>{post.dislikes}</span>
               </div>
-              <div className="flex items-center gap-1 text-gray-500">
+              <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="20"
@@ -214,8 +199,8 @@ export default function PostPage() {
                 </svg>
                 <span>{post.comments.length} comments</span>
               </div>
-              <div className="flex items-center gap-1 text-gray-500 ml-auto">
-                <button className="hover:text-blue-600 p-1">
+              <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 ml-auto">
+                <button className="hover:text-blue-600 dark:hover:text-blue-400 p-1">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="20"
@@ -231,7 +216,7 @@ export default function PostPage() {
                     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
                   </svg>
                 </button>
-                <button className="hover:text-blue-600 p-1">
+                <button className="hover:text-blue-600 dark:hover:text-blue-400 p-1">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="20"
@@ -253,20 +238,18 @@ export default function PostPage() {
             </div>
 
             <div className="mb-6">
-              <h2 className="text-lg font-semibold text-blue-600 mb-4">
-                Add a Comment
-              </h2>
+              <h2 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-4">Add a Comment</h2>
               <form onSubmit={handleCommentSubmit} className="space-y-4">
                 <Textarea
                   placeholder="What are your thoughts?"
-                  className="min-h-[100px] border-blue-200"
+                  className="min-h-[100px] border-blue-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                   value={commentContent}
                   onChange={(e) => setCommentContent(e.target.value)}
                 />
                 <div className="flex justify-end">
                   <Button
                     type="submit"
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
                     disabled={loading}
                   >
                     {loading ? "Posting..." : "Comment"}
@@ -276,7 +259,7 @@ export default function PostPage() {
             </div>
 
             <div>
-              <h2 className="text-lg font-semibold text-blue-600 mb-4">
+              <h2 className="text-lg font-semibold text-blue-600 dark:text-blue-400 mb-4">
                 Comments ({post.comments.length})
               </h2>
               <div className="space-y-4">
@@ -289,5 +272,5 @@ export default function PostPage() {
         </div>
       </div>
     </div>
-  );
+  )
 }

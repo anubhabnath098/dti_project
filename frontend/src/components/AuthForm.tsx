@@ -60,10 +60,10 @@ export default function AuthForm() {
   return (
     <div className="px-5 py-8 sm:px-8 w-full max-w-md mx-auto">
       <div className="mb-8 text-center">
-        <h2 className="text-3xl font-bold text-gray-800 mb-2">
+        <h2 className="text-3xl font-bold text-gray-800 mb-2 dark:text-gray-200">
           {isSignUp ? "Create Account" : "Welcome Back"}
         </h2>
-        <p className="text-gray-600 text-sm">
+        <p className="text-gray-600 text-sm dark:text-gray-300">
           {isSignUp
             ? "Sign up to get started with Blue Collar Connect"
             : "Sign in to continue to your account"}
@@ -74,7 +74,7 @@ export default function AuthForm() {
         <div className="space-y-2">
           <Label
             htmlFor="userType"
-            className="text-sm font-medium text-gray-700"
+            className="text-sm font-medium text-gray-700 dark:text-gray-300"
           >
             I am a
           </Label>
@@ -111,7 +111,7 @@ export default function AuthForm() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-2">
-          <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+          <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Email
           </Label>
           <Input
@@ -127,7 +127,7 @@ export default function AuthForm() {
         <div className="space-y-2">
           <Label
             htmlFor="password"
-            className="text-sm font-medium text-gray-700"
+            className="text-sm font-medium text-gray-700 dark:text-gray-300"
           >
             Password
           </Label>
@@ -164,11 +164,11 @@ export default function AuthForm() {
       )}
 
       <div className="mt-6 text-center">
-        <p className="text-gray-600">
+        <p className="text-gray-600 dark:text-gray-300">
           {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
           <button
             type="button"
-            className="font-medium text-blue-600 hover:underline"
+            className="font-medium text-blue-600 hover:underline dark:text-blue-400"
             onClick={() => setIsSignUp(!isSignUp)}
           >
             {isSignUp ? "Sign In" : "Sign Up"}

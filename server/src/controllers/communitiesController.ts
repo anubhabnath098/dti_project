@@ -3,169 +3,176 @@ import admin from '../firebaseAdmin.js';
 import { v4 as uuidv4 } from 'uuid';
 import Busboy from 'busboy';
 import { Readable } from 'stream';
+import { v2 as cloudinary } from 'cloudinary';
+import { config } from 'dotenv';
+config();
 
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME as string,
+  api_key: process.env.CLOUDINARY_API_KEY as string,
+  api_secret: process.env.CLOUDINARY_API_SECRET as string,
+});
 
 export const createWorkerCommunity = async (c: Context): Promise<Response> => {
-    return new Promise<Response>(async (resolve) => {
-      const contentType: string | undefined = c.req.header('content-type');
-      if (!contentType || !contentType.includes('multipart/form-data')) {
-        resolve(c.json({ error: 'Content-Type must be multipart/form-data' }, 400));
+  return new Promise<Response>(async (resolve) => {
+    const contentType: string | undefined = c.req.header('content-type');
+    if (!contentType || !contentType.includes('multipart/form-data')) {
+      resolve(c.json({ error: 'Content-Type must be multipart/form-data' }, 400));
+      return;
+    }
+    console.log(contentType);
+
+    const communityId = uuidv4();
+    const docRef = admin.firestore().collection('workerCommunities').doc(communityId);
+
+    const arrayBuffer = await c.req.arrayBuffer();
+    const bodyBuffer = Buffer.from(arrayBuffer);
+    const nodeReq = Readable.from(bodyBuffer);
+
+    const bb = Busboy({ headers: c.req.header() as Record<string, string> });
+
+    const fields: Record<string, any> = {};
+    const files: Record<string, { buffer: Buffer; filename: string; mimetype: string }> = {};
+    let fileTypeError: string | null = null;
+
+    bb.on('field', (fieldname: string, val: string) => {
+      if (fieldname === 'communityRules' || fieldname === 'communityTopics') {
+        try {
+          fields[fieldname] = JSON.parse(val);
+        } catch {
+          fields[fieldname] = val.split(',').map((item: string) => item.trim());
+        }
+      } else {
+        fields[fieldname] = val;
+      }
+    });
+
+    bb.on('file', (fieldname: string, file: any, filename: any, encoding: string, mimeType: string) => {
+      const safeFilename: string =
+        typeof filename?.filename === 'string'
+          ? filename.filename
+          : typeof filename === 'string'
+          ? filename
+          : 'unknown_file';
+
+      const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+      if (fieldname === 'communityProfilePhoto' || fieldname === 'communityBackgroundPhoto') {
+        const isValidImage =
+          (mimeType && validImageTypes.includes(mimeType.toLowerCase())) ||
+          /\.(jpg|jpeg|png)$/i.test(safeFilename);
+        if (!isValidImage) {
+          fileTypeError = `${fieldname} must be a JPG or PNG image`;
+          file.resume();
+          return;
+        }
+      }
+
+      const chunks: Buffer[] = [];
+      file.on('data', (data: Buffer) => {
+        chunks.push(data);
+      });
+      file.on('end', () => {
+        files[fieldname] = {
+          buffer: Buffer.concat(chunks),
+          filename: safeFilename,
+          mimetype: mimeType || '',
+        };
+      });
+    });
+
+    bb.on('error', (err) => {
+      console.error('Busboy error:', err);
+      resolve(c.json({ error: err }, 400));
+    });
+
+    bb.on('finish', async () => {
+      if (fileTypeError) {
+        resolve(c.json({ error: fileTypeError }, 400));
         return;
       }
-      console.log(contentType)
-  
-      // Generate a unique community ID
-      const communityId = uuidv4();
-      const docRef = admin.firestore().collection('workerCommunities').doc(communityId);
-  
-      // Read the request body as an ArrayBuffer and convert it to a Buffer
-      const arrayBuffer = await c.req.arrayBuffer();
-      const bodyBuffer = Buffer.from(arrayBuffer);
-      const nodeReq = Readable.from(bodyBuffer);
-  
-      // Initialize Busboy with the request headers
-      const bb = Busboy({ headers: c.req.header() as Record<string, string> });
-  
-      const fields: Record<string, any> = {};
-      const files: Record<string, { buffer: Buffer; filename: string; mimetype: string }> = {};
-      let fileTypeError: string | null = null;
-  
-      // Parse fields; handle array fields for communityRules and communityTopics
-      bb.on('field', (fieldname: string, val: string) => {
-        if (fieldname === 'communityRules' || fieldname === 'communityTopics') {
-          try {
-            fields[fieldname] = JSON.parse(val);
-          } catch {
-            fields[fieldname] = val.split(',').map((item: string) => item.trim());
-          }
-        } else {
-          fields[fieldname] = val;
+
+      if (!fields.communityName) {
+        resolve(c.json({ error: 'Community name is required' }, 400));
+        return;
+      }
+      const existingCommunity = await admin.firestore()
+        .collection('workerCommunities')
+        .where('communityName', '==', fields.communityName)
+        .get();
+      if (!existingCommunity.empty) {
+        resolve(c.json({ error: 'Community name already exists' }, 400));
+        return;
+      }
+
+      try {
+        // Upload images to Cloudinary
+        const uploadToCloudinary = async (file: { buffer: Buffer; filename: string; mimetype: string }, folder: string) => {
+          const uploadResult = await cloudinary.uploader.upload_stream(
+            { folder },
+            (error, result) => {
+              if (error) throw error;
+              return result;
+            }
+          );
+
+          return new Promise<string>((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              { folder },
+              (err, result) => {
+                if (err) reject(err);
+                else resolve(result?.secure_url || '');
+              }
+            );
+            stream.end(file.buffer);
+          });
+        };
+
+        if (files.communityProfilePhoto) {
+          fields.communityProfilePhoto = await uploadToCloudinary(files.communityProfilePhoto, "community_profiles");
         }
-      });
-  
-      // Parse files and validate image types for profile and background photos
-      bb.on('file', (fieldname: string, file: any, filename: any, encoding: string, mimeType: string) => {
-        const safeFilename: string =
-          typeof filename?.filename === 'string'
-            ? filename.filename
-            : typeof filename === 'string'
-            ? filename
-            : 'unknown_file';
-  
-        const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-        if (fieldname === 'communityProfilePhoto' || fieldname === 'communityBackgroundPhoto') {
-          const isValidImage =
-            (mimeType && validImageTypes.includes(mimeType.toLowerCase())) ||
-            /\.(jpg|jpeg|png)$/i.test(safeFilename);
-          if (!isValidImage) {
-            fileTypeError = `${fieldname} must be a JPG or PNG image`;
-            file.resume();
-            return;
-          }
+
+        if (files.communityBackgroundPhoto) {
+          fields.communityBackgroundPhoto = await uploadToCloudinary(files.communityBackgroundPhoto, "community_backgrounds");
         }
-  
-        const chunks: Buffer[] = [];
-        file.on('data', (data: Buffer) => {
-          chunks.push(data);
-        });
-        file.on('end', () => {
-          files[fieldname] = {
-            buffer: Buffer.concat(chunks),
-            filename: safeFilename,
-            mimetype: mimeType || '',
-          };
-        });
-      });
-  
-      // Attach an error handler for Busboy
-      bb.on('error', (err) => {
-        console.error('Busboy error:', err);
-        resolve(c.json({ error: err }, 400));
-      });
-  
-      bb.on('finish', async () => {
-        if (fileTypeError) {
-          resolve(c.json({ error: fileTypeError }, 400));
+
+        // Validate community type
+        const validCommunityTypes = ['public', 'restricted', 'private'];
+        if (!validCommunityTypes.includes(fields.communityType)) {
+          resolve(c.json({ error: 'Invalid community type. Must be public, restricted, or private' }, 400));
           return;
         }
-  
-        // Now that all fields are parsed, check if communityName exists
-        if (!fields.communityName) {
-          resolve(c.json({ error: 'Community name is required' }, 400));
-          return;
-        }
-        const existingCommunity = await admin.firestore()
-          .collection('workerCommunities')
-          .where('communityName', '==', fields.communityName)
-          .get();
-        if (!existingCommunity.empty) {
-          resolve(c.json({ error: 'Community name already exists' }, 400));
-          return;
-        }
-  
-        try {
-          const bucket = admin.storage().bucket();
-  
-          // Process community profile photo
-          if (files.communityProfilePhoto) {
-            const uniquePhotoName = `${uuidv4()}_${files.communityProfilePhoto.filename}`;
-            const photoFileRef = bucket.file(`community_profiles/${uniquePhotoName}`);
-            await photoFileRef.save(files.communityProfilePhoto.buffer, {
-              metadata: { contentType: files.communityProfilePhoto.mimetype },
-            });
-            await photoFileRef.makePublic();
-            fields.communityProfilePhoto = `https://storage.googleapis.com/${bucket.name}/community_profiles/${uniquePhotoName}`;
-          }
-  
-          // Process community background photo
-          if (files.communityBackgroundPhoto) {
-            const uniqueBgName = `${uuidv4()}_${files.communityBackgroundPhoto.filename}`;
-            const bgFileRef = bucket.file(`community_backgrounds/${uniqueBgName}`);
-            await bgFileRef.save(files.communityBackgroundPhoto.buffer, {
-              metadata: { contentType: files.communityBackgroundPhoto.mimetype },
-            });
-            await bgFileRef.makePublic();
-            fields.communityBackgroundPhoto = `https://storage.googleapis.com/${bucket.name}/community_backgrounds/${uniqueBgName}`;
-          }
-  
-          // Validate community type
-          const validCommunityTypes = ['public', 'restricted', 'private'];
-          if (!validCommunityTypes.includes(fields.communityType)) {
-            resolve(c.json({ error: 'Invalid community type. Must be public, restricted, or private' }, 400));
-            return;
-          }
-  
-          // Build the community object
-          const communityData = {
-            communityName: fields.communityName,
-            communityDescription: fields.communityDescription,
-            communityType: fields.communityType,
-            communityTopics: fields.communityTopics || [],
-            communityRules: fields.communityRules || [],
-            communityProfilePhoto: fields.communityProfilePhoto || null,
-            communityBackgroundPhoto: fields.communityBackgroundPhoto || null,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            memberCount: 0,
-            // Optionally, add additional fields like creatorId
-          };
-  
-          await docRef.set(communityData);
-          resolve(c.json({ 
-            message: 'Community created successfully', 
-            communityId: communityId,
-            community: communityData 
-          }, 201));
-        } catch (error: any) {
-          console.error('Error creating community:', error);
-          resolve(c.json({ error: error.message || 'Error creating community' }, 500));
-        }
-      });
-  
-      // Pipe the node stream to Busboy
-      nodeReq.pipe(bb);
+
+        // Build the community object
+        const communityData = {
+          communityName: fields.communityName,
+          communityDescription: fields.communityDescription,
+          communityType: fields.communityType,
+          communityTopics: fields.communityTopics || [],
+          communityRules: fields.communityRules || [],
+          communityProfilePhoto: fields.communityProfilePhoto || null,
+          communityBackgroundPhoto: fields.communityBackgroundPhoto || null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          memberCount: 0,
+        };
+
+        await docRef.set(communityData);
+        resolve(c.json({ 
+          message: 'Community created successfully', 
+          communityId: communityId,
+          community: communityData 
+        }, 201));
+      } catch (error: any) {
+        console.error('Error creating community:', error);
+        resolve(c.json({ error: error.message || 'Error creating community' }, 500));
+      }
     });
-  };
+
+    nodeReq.pipe(bb);
+  });
+};
+
   
 
   export const joinWorkerCommunity = async (c: Context): Promise<Response> => {
@@ -632,154 +639,156 @@ export const createWorkerCommunity = async (c: Context): Promise<Response> => {
   };
 
   export const createCommunityPost = async (c: Context): Promise<Response> => {
-    return new Promise<Response>(async (resolve) => {
-      const contentType: string | undefined = c.req.header('content-type');
-      if (!contentType || !contentType.includes('multipart/form-data')) {
-        resolve(c.json({ error: 'Content-Type must be multipart/form-data' }, 400));
-        return;
-      }
-  
-      // Generate unique post ID
-      const postId = uuidv4();
-      const postsRef = admin.firestore().collection('communityPosts').doc(postId);
-  
-      // Read request body
-      const arrayBuffer = await c.req.arrayBuffer();
-      const bodyBuffer = Buffer.from(arrayBuffer);
-      const nodeReq = Readable.from(bodyBuffer);
-  
-      const bb = Busboy({ headers: c.req.header() as Record<string, string> });
-  
-      const fields: Record<string, any> = {};
-      const files: Record<string, { buffer: Buffer; filename: string; mimetype: string }> = {};
-      let fileTypeError: string | null = null;
-  
-      bb.on('field', (fieldname: string, val: string) => {
-        fields[fieldname] = val;
-      });
-  
-      bb.on('file', (fieldname: string, file: any, filename: any, encoding: string, mimeType: string) => {
-        const safeFilename: string =
-          typeof filename?.filename === 'string'
-            ? filename.filename
-            : typeof filename === 'string'
-            ? filename
-            : 'unknown_file';
-  
-        // Validate image file (optional)
-        if (fieldname === 'image') {
-          const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-          const isValidImage =
-            (mimeType && validImageTypes.includes(mimeType.toLowerCase())) ||
-            /\.(jpg|jpeg|png)$/i.test(safeFilename);
-          if (!isValidImage) {
-            fileTypeError = 'Image must be a JPG or PNG file';
-            file.resume();
-            return;
-          }
-        }
-  
-        const chunks: Buffer[] = [];
-        file.on('data', (data: Buffer) => {
-          chunks.push(data);
-        });
-        file.on('end', () => {
-          files[fieldname] = {
-            buffer: Buffer.concat(chunks),
-            filename: safeFilename,
-            mimetype: mimeType || '',
-          };
-        });
-      });
-  
-      bb.on('finish', async () => {
-        if (fileTypeError) {
-          resolve(c.json({ error: fileTypeError }, 400));
+  return new Promise<Response>(async (resolve) => {
+    const contentType: string | undefined = c.req.header('content-type');
+    if (!contentType || !contentType.includes('multipart/form-data')) {
+      resolve(c.json({ error: 'Content-Type must be multipart/form-data' }, 400));
+      return;
+    }
+
+    // Generate unique post ID
+    const postId = uuidv4();
+    const postsRef = admin.firestore().collection('communityPosts').doc(postId);
+
+    // Read request body
+    const arrayBuffer = await c.req.arrayBuffer();
+    const bodyBuffer = Buffer.from(arrayBuffer);
+    const nodeReq = Readable.from(bodyBuffer);
+
+    const bb = Busboy({ headers: c.req.header() as Record<string, string> });
+
+    const fields: Record<string, any> = {};
+    const files: Record<string, { buffer: Buffer; filename: string; mimetype: string }> = {};
+    let fileTypeError: string | null = null;
+
+    bb.on('field', (fieldname: string, val: string) => {
+      fields[fieldname] = val;
+    });
+
+    bb.on('file', (fieldname: string, file: any, filename: any, encoding: string, mimeType: string) => {
+      const safeFilename: string =
+        typeof filename?.filename === 'string'
+          ? filename.filename
+          : typeof filename === 'string'
+          ? filename
+          : 'unknown_file';
+
+      // Validate image file
+      if (fieldname === 'image') {
+        const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+        const isValidImage =
+          (mimeType && validImageTypes.includes(mimeType.toLowerCase())) ||
+          /\.(jpg|jpeg|png)$/i.test(safeFilename);
+        if (!isValidImage) {
+          fileTypeError = 'Image must be a JPG or PNG file';
+          file.resume();
           return;
         }
-  
-        try {
-          // Validate required fields
-          const { communityId, title, content, author,displayAuthor } = fields;
-          if (!communityId || !title || !content || !author || !displayAuthor) {
-            resolve(c.json({ 
-              error: 'Missing required fields: communityId, title, content, and author are required' 
-            }, 400));
-            return;
-          }
-  
-          // Check if community exists
-          const communityRef = admin.firestore().collection('workerCommunities').doc(communityId);
-          const communityDoc = await communityRef.get();
-          if (!communityDoc.exists) {
-            resolve(c.json({ error: 'Community does not exist' }, 404));
-            return;
-          }
-  
-          // Check if author is a member (assuming userId is same as author for simplicity)
-          const membershipRef = admin.firestore()
-            .collection('communityMemberships')
-            .doc(`${communityId}_${author}`);
-          const membershipDoc = await membershipRef.get();
-          if (!membershipDoc.exists) {
-            resolve(c.json({ error: 'User is not a member of this community' }, 403));
-            return;
-          }
-  
-          const bucket = admin.storage().bucket();
-          let imageUrl: string|null=null
-  
-          // Process image if provided
-          if (files.image) {
-            const uniqueImageName = `${uuidv4()}_${files.image.filename}`;
-            const imageFileRef = bucket.file(`post_images/${uniqueImageName}`);
-            await imageFileRef.save(files.image.buffer, {
-              metadata: { contentType: files.image.mimetype },
-            });
-            await imageFileRef.makePublic();
-            imageUrl = `https://storage.googleapis.com/${bucket.name}/post_images/${uniqueImageName}`;
-          }
-  
-          // Create post data
-          const postData: CommunityPost = {
-            communityId:communityId,
-            id: postId,
-            title:title,
-            content:content || "",
-            author:displayAuthor || "anonymous",
-            timeAgo: 'just now',
-            likes: 0,
-            dislikes: 0,
-            image: imageUrl||"",
-            comments: [], 
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          };
-  
-          // Save post
-          await postsRef.set(postData);
-  
-          // Update community with last activity
-          await communityRef.update({
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-  
-          resolve(c.json({
-            message: 'Post created successfully',
-            post: postData
-          }, 201));
-  
-        } catch (error: any) {
-          console.error('Error creating post:', error);
-          resolve(c.json({ 
-            error: error.message || 'Error creating post' 
-          }, 500));
-        }
+      }
+
+      const chunks: Buffer[] = [];
+      file.on('data', (data: Buffer) => {
+        chunks.push(data);
       });
-  
-      nodeReq.pipe(bb);
+      file.on('end', () => {
+        files[fieldname] = {
+          buffer: Buffer.concat(chunks),
+          filename: safeFilename,
+          mimetype: mimeType || '',
+        };
+      });
     });
-  };
+
+    bb.on('finish', async () => {
+      if (fileTypeError) {
+        resolve(c.json({ error: fileTypeError }, 400));
+        return;
+      }
+
+      try {
+        // Validate required fields
+        const { communityId, title, content, author, displayAuthor } = fields;
+        if (!communityId || !title || !content || !author || !displayAuthor) {
+          resolve(c.json({ 
+            error: 'Missing required fields: communityId, title, content, author, displayAuthor' 
+          }, 400));
+          return;
+        }
+
+        // Check if community exists
+        const communityRef = admin.firestore().collection('workerCommunities').doc(communityId);
+        const communityDoc = await communityRef.get();
+        if (!communityDoc.exists) {
+          resolve(c.json({ error: 'Community does not exist' }, 404));
+          return;
+        }
+
+        // Check if author is a member
+        const membershipRef = admin.firestore()
+          .collection('communityMemberships')
+          .doc(`${communityId}_${author}`);
+        const membershipDoc = await membershipRef.get();
+        if (!membershipDoc.exists) {
+          resolve(c.json({ error: 'User is not a member of this community' }, 403));
+          return;
+        }
+
+        let imageUrl: string | null = null;
+
+        // Upload image to Cloudinary (if provided)
+        if (files.image) {
+          imageUrl = await new Promise<string>((resolveUpload, rejectUpload) => {
+            const stream = cloudinary.uploader.upload_stream(
+              { folder: "community_posts" },
+              (err, result) => {
+                if (err) rejectUpload(err);
+                else resolveUpload(result?.secure_url || "");
+              }
+            );
+            stream.end(files.image.buffer);
+          });
+        }
+
+        // Create post data
+        const postData: CommunityPost = {
+          communityId,
+          id: postId,
+          title,
+          content: content || "",
+          author: displayAuthor || "anonymous",
+          timeAgo: "just now",
+          likes: 0,
+          dislikes: 0,
+          image: imageUrl || "",
+          comments: [], 
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        // Save post
+        await postsRef.set(postData);
+
+        // Update community last activity
+        await communityRef.update({
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        resolve(c.json({
+          message: 'Post created successfully',
+          post: postData,
+        }, 201));
+
+      } catch (error: any) {
+        console.error('Error creating post:', error);
+        resolve(c.json({ 
+          error: error.message || 'Error creating post' 
+        }, 500));
+      }
+    });
+
+    nodeReq.pipe(bb);
+  });
+};
 
   //get communityPosts
 

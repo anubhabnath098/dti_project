@@ -1,25 +1,13 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useState, useEffect, useRef } from "react"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Briefcase,
   Building2,
@@ -31,9 +19,9 @@ import {
   ChevronRight,
   Banknote,
   SlidersHorizontal,
-} from "lucide-react";
-import { useJobPosts } from "@/hooks/jobPostHook";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "lucide-react"
+import { useJobPosts } from "@/hooks/jobPostHook"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Sheet,
   SheetContent,
@@ -43,83 +31,109 @@ import {
   SheetTrigger,
   SheetFooter,
   SheetClose,
-} from "@/components/ui/sheet";
+} from "@/components/ui/sheet"
+import { useGoogleTranslate } from "@/context/googleTranslateContext"
 
 export function JobsList() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [locationFilter, setLocationFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [inclusivityFilter, setInclusivityFilter] = useState("all");
-  const [showFilters, setShowFilters] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("")
+  const [locationFilter, setLocationFilter] = useState("all")
+  const [typeFilter, setTypeFilter] = useState("all")
+  const [inclusivityFilter, setInclusivityFilter] = useState("all")
+  const [filteredJobs, setFilteredJobs] = useState<any[]>([])
+  const lastFilteredResultsRef = useRef<any[]>([])
+  const { isActive: isTranslateActive } = useGoogleTranslate()
 
   const { jobPosts, loading, error } = useJobPosts({
     limit: 50,
-    // Optional: Pass other parameters as needed
-  });
+  })
+
+  useEffect(() => {
+    let result = [...jobPosts]
+
+    if (!isTranslateActive) {
+      // Apply search filter
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase()
+        result = result.filter(
+          (job) =>
+            job.job_title.toLowerCase().includes(term) ||
+            (job.employer_name && job.employer_name.toLowerCase().includes(term)) ||
+            job.type_of_work.toLowerCase().includes(term),
+        )
+      }
+
+      // Apply location filter
+      if (locationFilter !== "all") {
+        result = result.filter((job) => job.location?.city?.includes(locationFilter))
+      }
+
+      // Apply type filter
+      if (typeFilter !== "all") {
+        result = result.filter((job) => job.type_of_work === typeFilter)
+      }
+
+      // Apply inclusivity filter
+      if (inclusivityFilter !== "all") {
+        if (inclusivityFilter === "women-friendly") {
+          result = result.filter((job) => job.special_woman_provision === true)
+        } else if (inclusivityFilter === "lgbt-friendly") {
+          result = result.filter((job) => job.special_transgender_provision === true)
+        } else if (inclusivityFilter === "disability-friendly") {
+          result = result.filter((job) => job.special_disability_provision === true)
+        }
+      }
+
+      lastFilteredResultsRef.current = result
+      setFilteredJobs(result)
+    } else {
+      setFilteredJobs(lastFilteredResultsRef.current)
+    }
+  }, [jobPosts, searchTerm, locationFilter, typeFilter, inclusivityFilter, isTranslateActive])
 
   // Get unique cities from job locations for filtering
-  const locations = Array.from(
-    new Set(jobPosts.map((job) => job.location?.city).filter(Boolean))
-  );
-
-  // Filter jobs based on search and filters
-  const filteredJobs = jobPosts.filter((job) => {
-    const matchesSearch =
-      job.job_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (job.employer_name &&
-        job.employer_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      job.type_of_work.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesLocation =
-      locationFilter === "all"
-        ? true
-        : job.location?.city?.includes(locationFilter);
-
-    const matchesType =
-      typeFilter === "all" ? true : job.type_of_work === typeFilter;
-
-    // Using explicit boolean checks for each inclusivity option
-    const matchesInclusivity = (() => {
-      if (inclusivityFilter === "all") return true;
-      if (inclusivityFilter === "women-friendly")
-        return job.special_woman_provision === true;
-      if (inclusivityFilter === "lgbt-friendly")
-        return job.special_transgender_provision === true;
-      if (inclusivityFilter === "disability-friendly")
-        return job.special_disability_provision === true;
-      return false;
-    })();
-
-    return (
-      matchesSearch && matchesLocation && matchesType && matchesInclusivity
-    );
-  });
+  const locations = Array.from(new Set(jobPosts.map((job) => job.location?.city).filter(Boolean)))
 
   const resetFilters = () => {
-    setLocationFilter("all");
-    setTypeFilter("all");
-    setInclusivityFilter("all");
-    setSearchTerm("");
-  };
+    if (isTranslateActive) return
+    setLocationFilter("all")
+    setTypeFilter("all")
+    setInclusivityFilter("all")
+    setSearchTerm("")
+  }
 
   const hasActiveFilters =
-    locationFilter !== "all" ||
-    typeFilter !== "all" ||
-    inclusivityFilter !== "all" ||
-    searchTerm !== "";
+    locationFilter !== "all" || typeFilter !== "all" || inclusivityFilter !== "all" || searchTerm !== ""
 
   const activeFilterCount =
-    (locationFilter !== "all" ? 1 : 0) +
-    (typeFilter !== "all" ? 1 : 0) +
-    (inclusivityFilter !== "all" ? 1 : 0);
+    (locationFilter !== "all" ? 1 : 0) + (typeFilter !== "all" ? 1 : 0) + (inclusivityFilter !== "all" ? 1 : 0)
 
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 rounded-xl p-4 sm:p-6 shadow-sm">
+      {isTranslateActive && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-800">
+                Google Translate is active. Filtering features are disabled to prevent issues. For the best experience,
+                please disable translation.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-gradient-to-r from-blue-200 to-indigo-200 dark:from-blue-800/60 dark:to-indigo-800/60 rounded-xl p-4 sm:p-6 shadow-sm">
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-xl sm:text-2xl font-bold text-center mb-4 sm:mb-6">
-            Find Your Perfect Job
-          </h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-center mb-4 sm:mb-6">Find Your Perfect Job</h2>
 
           {/* Search bar with mobile filter button */}
           <div className="relative">
@@ -129,7 +143,8 @@ export function JobsList() {
               placeholder="Search jobs..."
               className="pl-10 pr-12 h-12 text-base bg-white dark:bg-gray-950 shadow-sm"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => !isTranslateActive && setSearchTerm(e.target.value)}
+              disabled={isTranslateActive}
             />
 
             {/* Mobile filter button using Sheet component */}
@@ -139,7 +154,8 @@ export function JobsList() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-10 w-10 rounded-md"
+                    className="h-10 w-10 rounded-md bg-transparent"
+                    disabled={isTranslateActive}
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                     {activeFilterCount > 0 && (
@@ -149,33 +165,23 @@ export function JobsList() {
                     )}
                   </Button>
                 </SheetTrigger>
-                <SheetContent
-                  side="bottom"
-                  className="h-[80vh] sm:h-[60vh] rounded-t-xl"
-                >
+                <SheetContent side="bottom" className="h-[80vh] sm:h-[60vh] rounded-t-xl">
                   <SheetHeader className="mb-4">
                     <SheetTitle>Filter Jobs</SheetTitle>
-                    <SheetDescription>
-                      Refine your job search with these filters
-                    </SheetDescription>
+                    <SheetDescription>Refine your job search with these filters</SheetDescription>
                   </SheetHeader>
 
                   <div className="space-y-6 overflow-y-auto pb-16">
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="mobile-location"
-                        className="text-sm font-medium"
-                      >
+                      <Label htmlFor="mobile-location" className="text-sm font-medium">
                         Location
                       </Label>
                       <Select
                         value={locationFilter}
-                        onValueChange={setLocationFilter}
+                        onValueChange={(value) => !isTranslateActive && setLocationFilter(value)}
+                        disabled={isTranslateActive}
                       >
-                        <SelectTrigger
-                          id="mobile-location"
-                          className="bg-white dark:bg-gray-950"
-                        >
+                        <SelectTrigger id="mobile-location" className="bg-white dark:bg-gray-950">
                           <SelectValue placeholder="All locations" />
                         </SelectTrigger>
                         <SelectContent>
@@ -190,17 +196,15 @@ export function JobsList() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="mobile-type"
-                        className="text-sm font-medium"
-                      >
+                      <Label htmlFor="mobile-type" className="text-sm font-medium">
                         Job Type
                       </Label>
-                      <Select value={typeFilter} onValueChange={setTypeFilter}>
-                        <SelectTrigger
-                          id="mobile-type"
-                          className="bg-white dark:bg-gray-950"
-                        >
+                      <Select
+                        value={typeFilter}
+                        onValueChange={(value) => !isTranslateActive && setTypeFilter(value)}
+                        disabled={isTranslateActive}
+                      >
+                        <SelectTrigger id="mobile-type" className="bg-white dark:bg-gray-950">
                           <SelectValue placeholder="All types" />
                         </SelectTrigger>
                         <SelectContent>
@@ -215,33 +219,22 @@ export function JobsList() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="mobile-inclusivity"
-                        className="text-sm font-medium"
-                      >
+                      <Label htmlFor="mobile-inclusivity" className="text-sm font-medium">
                         Inclusivity
                       </Label>
                       <Select
                         value={inclusivityFilter}
-                        onValueChange={setInclusivityFilter}
+                        onValueChange={(value) => !isTranslateActive && setInclusivityFilter(value)}
+                        disabled={isTranslateActive}
                       >
-                        <SelectTrigger
-                          id="mobile-inclusivity"
-                          className="bg-white dark:bg-gray-950"
-                        >
+                        <SelectTrigger id="mobile-inclusivity" className="bg-white dark:bg-gray-950">
                           <SelectValue placeholder="All jobs" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All jobs</SelectItem>
-                          <SelectItem value="women-friendly">
-                            Women-friendly
-                          </SelectItem>
-                          <SelectItem value="disability-friendly">
-                            Disability-friendly
-                          </SelectItem>
-                          <SelectItem value="lgbt-friendly">
-                            LGBTQ+-friendly
-                          </SelectItem>
+                          <SelectItem value="women-friendly">Women-friendly</SelectItem>
+                          <SelectItem value="disability-friendly">Disability-friendly</SelectItem>
+                          <SelectItem value="lgbt-friendly">LGBTQ+-friendly</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -251,8 +244,9 @@ export function JobsList() {
                     <div className="flex w-full gap-2">
                       <Button
                         variant="outline"
-                        className="flex-1"
+                        className="flex-1 bg-transparent"
                         onClick={resetFilters}
+                        disabled={isTranslateActive}
                       >
                         Reset
                       </Button>
@@ -272,11 +266,12 @@ export function JobsList() {
               <Label htmlFor="location" className="text-sm font-medium">
                 Location
               </Label>
-              <Select value={locationFilter} onValueChange={setLocationFilter}>
-                <SelectTrigger
-                  id="location"
-                  className="bg-white dark:bg-gray-950"
-                >
+              <Select
+                value={locationFilter}
+                onValueChange={(value) => !isTranslateActive && setLocationFilter(value)}
+                disabled={isTranslateActive}
+              >
+                <SelectTrigger id="location" className="bg-white dark:bg-gray-950">
                   <SelectValue placeholder="All locations" />
                 </SelectTrigger>
                 <SelectContent>
@@ -294,7 +289,11 @@ export function JobsList() {
               <Label htmlFor="type" className="text-sm font-medium">
                 Job Type
               </Label>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <Select
+                value={typeFilter}
+                onValueChange={(value) => !isTranslateActive && setTypeFilter(value)}
+                disabled={isTranslateActive}
+              >
                 <SelectTrigger id="type" className="bg-white dark:bg-gray-950">
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
@@ -315,20 +314,16 @@ export function JobsList() {
               </Label>
               <Select
                 value={inclusivityFilter}
-                onValueChange={setInclusivityFilter}
+                onValueChange={(value) => !isTranslateActive && setInclusivityFilter(value)}
+                disabled={isTranslateActive}
               >
-                <SelectTrigger
-                  id="inclusivity"
-                  className="bg-white dark:bg-gray-950"
-                >
+                <SelectTrigger id="inclusivity" className="bg-white dark:bg-gray-950">
                   <SelectValue placeholder="All jobs" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All jobs</SelectItem>
                   <SelectItem value="women-friendly">Women-friendly</SelectItem>
-                  <SelectItem value="disability-friendly">
-                    Disability-friendly
-                  </SelectItem>
+                  <SelectItem value="disability-friendly">Disability-friendly</SelectItem>
                   <SelectItem value="lgbt-friendly">LGBTQ+-friendly</SelectItem>
                 </SelectContent>
               </Select>
@@ -336,70 +331,37 @@ export function JobsList() {
           </div>
 
           {/* Active filters display */}
-          {hasActiveFilters && (
+          {hasActiveFilters && !isTranslateActive && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-2">
                 {searchTerm && (
-                  <Badge
-                    variant="secondary"
-                    className="px-3 py-1 flex items-center gap-1"
-                  >
-                    <span className="max-w-[100px] sm:max-w-none truncate">
-                      "{searchTerm}"
-                    </span>
-                    <X
-                      className="h-3 w-3 cursor-pointer"
-                      onClick={() => setSearchTerm("")}
-                    />
+                  <Badge variant="secondary" className="px-3 py-1 flex items-center gap-1">
+                    <span className="max-w-[100px] sm:max-w-none truncate">"{searchTerm}"</span>
+                    <X className="h-3 w-3 cursor-pointer" onClick={() => setSearchTerm("")} />
                   </Badge>
                 )}
                 {locationFilter !== "all" && (
-                  <Badge
-                    variant="secondary"
-                    className="px-3 py-1 flex items-center gap-1"
-                  >
+                  <Badge variant="secondary" className="px-3 py-1 flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
-                    <span className="max-w-[80px] sm:max-w-none truncate">
-                      {locationFilter}
-                    </span>
-                    <X
-                      className="h-3 w-3 cursor-pointer"
-                      onClick={() => setLocationFilter("all")}
-                    />
+                    <span className="max-w-[80px] sm:max-w-none truncate">{locationFilter}</span>
+                    <X className="h-3 w-3 cursor-pointer" onClick={() => setLocationFilter("all")} />
                   </Badge>
                 )}
                 {typeFilter !== "all" && (
-                  <Badge
-                    variant="secondary"
-                    className="px-3 py-1 flex items-center gap-1"
-                  >
+                  <Badge variant="secondary" className="px-3 py-1 flex items-center gap-1">
                     <Briefcase className="h-3 w-3" />
                     <span>{typeFilter}</span>
-                    <X
-                      className="h-3 w-3 cursor-pointer"
-                      onClick={() => setTypeFilter("all")}
-                    />
+                    <X className="h-3 w-3 cursor-pointer" onClick={() => setTypeFilter("all")} />
                   </Badge>
                 )}
                 {inclusivityFilter !== "all" && (
-                  <Badge
-                    variant="secondary"
-                    className="px-3 py-1 flex items-center gap-1"
-                  >
+                  <Badge variant="secondary" className="px-3 py-1 flex items-center gap-1">
                     <span>{inclusivityFilter}</span>
-                    <X
-                      className="h-3 w-3 cursor-pointer"
-                      onClick={() => setInclusivityFilter("all")}
-                    />
+                    <X className="h-3 w-3 cursor-pointer" onClick={() => setInclusivityFilter("all")} />
                   </Badge>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={resetFilters}
-                className="text-xs"
-              >
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="text-xs">
                 Clear all
               </Button>
             </div>
@@ -415,9 +377,7 @@ export function JobsList() {
         </div>
       ) : error ? (
         <div className="text-center py-8 sm:py-12 bg-red-50 dark:bg-red-950/20 rounded-lg">
-          <p className="text-red-600 dark:text-red-400">
-            Error loading jobs. Please try again later.
-          </p>
+          <p className="text-red-600 dark:text-red-400">Error loading jobs. Please try again later.</p>
         </div>
       ) : (
         <>
@@ -425,22 +385,8 @@ export function JobsList() {
             <>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
                 <p className="text-sm text-muted-foreground">
-                  Showing{" "}
-                  <span className="font-medium text-foreground">
-                    {filteredJobs.length}
-                  </span>{" "}
-                  jobs
+                  Showing <span className="font-medium text-foreground">{filteredJobs.length}</span> jobs
                 </p>
-                <Select defaultValue="newest">
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="newest">Newest first</SelectItem>
-                    <SelectItem value="oldest">Oldest first</SelectItem>
-                    <SelectItem value="relevance">Relevance</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
 
               <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -451,10 +397,10 @@ export function JobsList() {
                       job.special_woman_provision
                         ? "border-l-4 border-l-pink-500"
                         : job.special_transgender_provision
-                        ? "border-l-4 border-l-purple-500"
-                        : job.special_disability_provision
-                        ? "border-l-4 border-l-blue-500"
-                        : ""
+                          ? "border-l-4 border-l-purple-500"
+                          : job.special_disability_provision
+                            ? "border-l-4 border-l-blue-500"
+                            : ""
                     }`}
                   >
                     <CardHeader className="pb-2 relative">
@@ -465,9 +411,7 @@ export function JobsList() {
                       </div>
                       <div className="flex items-center text-sm text-muted-foreground mt-1">
                         <Building2 className="h-4 w-4 mr-1 flex-shrink-0" />
-                        <span className="truncate">
-                          {job.employer_name || "Unknown Employer"}
-                        </span>
+                        <span className="truncate">{job.employer_name || "Unknown Employer"}</span>
                       </div>
                       <div className="absolute top-4 right-4 flex flex-col sm:flex-row gap-1">
                         {job.special_woman_provision && (
@@ -494,18 +438,13 @@ export function JobsList() {
                           <span className="truncate">
                             {job.place_of_work ||
                               (job.location
-                                ? [job.location.city, job.location.state]
-                                    .filter(Boolean)
-                                    .join(", ")
+                                ? [job.location.city, job.location.state].filter(Boolean).join(", ")
                                 : "Location not provided")}
                           </span>
                         </div>
                         <div className="flex items-center text-sm">
                           <Briefcase className="h-4 w-4 mr-1 flex-shrink-0" />
-                          <Badge
-                            variant="outline"
-                            className="font-normal rounded-sm"
-                          >
+                          <Badge variant="outline" className="font-normal rounded-sm">
                             {job.type_of_work}
                           </Badge>
                         </div>
@@ -516,8 +455,7 @@ export function JobsList() {
                         {job.createdAt && (
                           <div className="flex items-center text-xs text-muted-foreground">
                             <Calendar className="h-3 w-3 mr-1 flex-shrink-0" />
-                            Posted{" "}
-                            {new Date(job.createdAt).toLocaleDateString()}
+                            Posted {new Date(job.createdAt).toLocaleDateString()}
                           </div>
                         )}
                       </div>
@@ -526,7 +464,7 @@ export function JobsList() {
                       <Link href={`/job/${job.id}`} className="w-full">
                         <Button
                           variant="outline"
-                          className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                          className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors bg-transparent"
                         >
                           <span>View Details</span>
                           <ChevronRight className="ml-2 h-4 w-4" />
@@ -541,7 +479,7 @@ export function JobsList() {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="w-full sm:w-auto px-4 sm:px-8 font-medium"
+                  className="w-full sm:w-auto px-4 sm:px-8 font-medium bg-transparent"
                 >
                   Load More Jobs
                   <Loader2 className="ml-2 h-4 w-4 animate-spin opacity-0" />
@@ -552,12 +490,9 @@ export function JobsList() {
             <div className="text-center py-10 sm:py-16 bg-muted/30 rounded-lg">
               <div className="max-w-md mx-auto space-y-4 px-4">
                 <Search className="h-10 w-10 sm:h-12 sm:w-12 mx-auto text-muted-foreground opacity-50" />
-                <h3 className="text-lg sm:text-xl font-semibold">
-                  No jobs found
-                </h3>
+                <h3 className="text-lg sm:text-xl font-semibold">No jobs found</h3>
                 <p className="text-sm sm:text-base text-muted-foreground">
-                  No jobs match your current search criteria. Try adjusting your
-                  filters or search terms.
+                  No jobs match your current search criteria. Try adjusting your filters or search terms.
                 </p>
                 <Button onClick={resetFilters} className="mt-4">
                   Clear All Filters
@@ -568,7 +503,7 @@ export function JobsList() {
         </>
       )}
     </div>
-  );
+  )
 }
 
 function JobCardSkeleton() {
@@ -592,5 +527,5 @@ function JobCardSkeleton() {
         <Skeleton className="h-9 w-full" />
       </CardFooter>
     </Card>
-  );
+  )
 }

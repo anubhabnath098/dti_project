@@ -4,7 +4,9 @@ import { createRequire } from "module";
 import { v4 as uuidv4 } from "uuid";
 import type { IncomingMessage } from "http";
 import { Readable } from "stream";
-
+import { v2 as cloudinary } from "cloudinary";
+import { config } from 'dotenv';
+config();
 const require = createRequire(import.meta.url);
 const Busboy = require("busboy");
 
@@ -32,6 +34,16 @@ interface UserProfile {
  *
  * If a profile for the given user ID already exists, it returns an error.
  */
+
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME as string,
+  api_key: process.env.CLOUDINARY_API_KEY as string,
+  api_secret: process.env.CLOUDINARY_API_SECRET as string,
+});
+
+
 export const createUserProfileById = async (c: Context): Promise<Response> => {
   return new Promise<Response>(async (resolve) => {
     const contentType: string | undefined = c.req.header("content-type");
@@ -55,18 +67,14 @@ export const createUserProfileById = async (c: Context): Promise<Response> => {
       return;
     }
 
-    // Read the entire request body as an ArrayBuffer and convert to Buffer
+    // Read request body
     const arrayBuffer = await c.req.arrayBuffer();
     const bodyBuffer = Buffer.from(arrayBuffer);
-
-    // Create a Node.js Readable stream from the Buffer
     const nodeReq = Readable.from(bodyBuffer);
 
-    // Create Busboy instance using request headers
     const bb = Busboy({ headers: c.req.header() as Record<string, string> });
 
     const fields: Record<string, string | undefined | null> = {};
-
     const files: Record<
       string,
       { buffer: Buffer; filename: string; mimetype: string }
@@ -86,7 +94,6 @@ export const createUserProfileById = async (c: Context): Promise<Response> => {
         encoding: string,
         mimeType: string
       ) => {
-        // Ensure safeFilename is a string
         const safeFilename: string =
           typeof filename?.filename === "string"
             ? filename.filename
@@ -145,27 +152,37 @@ export const createUserProfileById = async (c: Context): Promise<Response> => {
         return;
       }
       try {
-        const bucket = admin.storage().bucket();
-
-        // Process profilePhoto if provided
-        if (files.profilePhoto) {
-          const uniquePhotoName = `${uuidv4()}_${files.profilePhoto.filename}`;
-          const photoFileRef = bucket.file(uniquePhotoName);
-          await photoFileRef.save(files.profilePhoto.buffer, {
-            metadata: { contentType: files.profilePhoto.mimetype },
+        // Upload helper
+        const uploadToCloudinary = (
+          file: { buffer: Buffer; filename: string; mimetype: string },
+          folder: string
+        ): Promise<string> => {
+          return new Promise((resolveUpload, rejectUpload) => {
+            const stream = cloudinary.uploader.upload_stream(
+              { folder, resource_type: "auto" }, // auto lets PDFs + images work
+              (err, result) => {
+                if (err) rejectUpload(err);
+                else resolveUpload(result?.secure_url || "");
+              }
+            );
+            stream.end(file.buffer);
           });
-          await photoFileRef.makePublic();
-          fields.profilePhoto = `https://storage.googleapis.com/${bucket.name}/${uniquePhotoName}`;
+        };
+
+        // Process profile photo if provided
+        if (files.profilePhoto) {
+          fields.profilePhoto = await uploadToCloudinary(
+            files.profilePhoto,
+            "user_profiles/photos"
+          );
         }
+
         // Process resume if provided
         if (files.resume) {
-          const uniqueResumeName = `${uuidv4()}_${files.resume.filename}`;
-          const resumeFileRef = bucket.file(uniqueResumeName);
-          await resumeFileRef.save(files.resume.buffer, {
-            metadata: { contentType: files.resume.mimetype },
-          });
-          await resumeFileRef.makePublic();
-          fields.resume = `https://storage.googleapis.com/${bucket.name}/${uniqueResumeName}`;
+          fields.resume = await uploadToCloudinary(
+            files.resume,
+            "user_profiles/resumes"
+          );
         }
 
         // Build the user profile object
@@ -220,11 +237,13 @@ export const updateUserProfileById = async (c: Context): Promise<Response> => {
       );
       return;
     }
+
     const userId = c.req.param("id");
     if (!userId) {
       resolve(c.json({ error: "User ID not provided" }, 400));
       return;
     }
+
     const docRef = admin.firestore().collection("userProfiles").doc(userId);
     const existingDoc = await docRef.get();
     const existingProfile = existingDoc.exists ? existingDoc.data() : {};
@@ -232,6 +251,7 @@ export const updateUserProfileById = async (c: Context): Promise<Response> => {
     const arrayBuffer = await c.req.arrayBuffer();
     const bodyBuffer = Buffer.from(arrayBuffer);
     const nodeReq = Readable.from(bodyBuffer);
+
     const bb = Busboy({ headers: c.req.header() as Record<string, string> });
 
     const fields: Record<string, string> = {};
@@ -309,57 +329,44 @@ export const updateUserProfileById = async (c: Context): Promise<Response> => {
         return;
       }
       try {
-        const bucket = admin.storage().bucket();
-
-        // If new profilePhoto provided, delete old file if exists
-        if (files.profilePhoto && existingProfile?.profilePhoto) {
-          const oldPhotoUrl: string = existingProfile.profilePhoto;
-          const oldPhotoName = oldPhotoUrl.split("/").pop();
-          if (oldPhotoName) {
-            try {
-              await bucket.file(oldPhotoName).delete();
-            } catch (err) {
-              console.error("Error deleting old profile photo:", err);
-            }
-          }
-        }
-        // If new resume provided, delete old file if exists
-        if (files.resume && existingProfile?.resume) {
-          const oldResumeUrl: string = existingProfile.resume;
-          const oldResumeName = oldResumeUrl.split("/").pop();
-          if (oldResumeName) {
-            try {
-              await bucket.file(oldResumeName).delete();
-            } catch (err) {
-              console.error("Error deleting old resume:", err);
-            }
-          }
-        }
+        // Upload helper for Cloudinary
+        const uploadToCloudinary = (
+          file: { buffer: Buffer; filename: string; mimetype: string },
+          folder: string
+        ): Promise<string> => {
+          return new Promise((resolveUpload, rejectUpload) => {
+            const stream = cloudinary.uploader.upload_stream(
+              { folder, resource_type: "auto" },
+              (err, result) => {
+                if (err) rejectUpload(err);
+                else resolveUpload(result?.secure_url || "");
+              }
+            );
+            stream.end(file.buffer);
+          });
+        };
 
         // Process new profilePhoto if provided
         if (files.profilePhoto) {
-          const uniquePhotoName = `${uuidv4()}_${files.profilePhoto.filename}`;
-          const photoFileRef = bucket.file(uniquePhotoName);
-          await photoFileRef.save(files.profilePhoto.buffer, {
-            metadata: { contentType: files.profilePhoto.mimetype },
-          });
-          await photoFileRef.makePublic();
-          fields.profilePhoto = `https://storage.googleapis.com/${bucket.name}/${uniquePhotoName}`;
+          fields.profilePhoto = await uploadToCloudinary(
+            files.profilePhoto,
+            "user_profiles/photos"
+          );
         }
+
         // Process new resume if provided
         if (files.resume) {
-          const uniqueResumeName = `${uuidv4()}_${files.resume.filename}`;
-          const resumeFileRef = bucket.file(uniqueResumeName);
-          await resumeFileRef.save(files.resume.buffer, {
-            metadata: { contentType: files.resume.mimetype },
-          });
-          await resumeFileRef.makePublic();
-          fields.resume = `https://storage.googleapis.com/${bucket.name}/${uniqueResumeName}`;
+          fields.resume = await uploadToCloudinary(
+            files.resume,
+            "user_profiles/resumes"
+          );
         }
 
         fields.updatedAt =
           admin.firestore.FieldValue.serverTimestamp() as unknown as string;
+
         await docRef.update(fields);
+
         resolve(
           c.json({
             message: "Profile updated successfully",
