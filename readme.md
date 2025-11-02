@@ -80,7 +80,7 @@ npm run dev  # Run frontend and server (in respective directories)
 ### Start AI Module
 
 ```sh
-uvicorn main:api --reload
+uvicorn app:app --reload
 ```
 
 ---
