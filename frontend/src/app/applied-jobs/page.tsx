@@ -194,7 +194,7 @@ export default function AppliedJobs() {
         </div>
       )}
 
-      <div className="mb-8">
+      <div className="mb-8 py-12">
         <h1 className="text-3xl font-bold text-blue-800 mb-2 dark:text-blue-500">Applied Jobs</h1>
         <p className="text-muted-foreground">View and manage all the jobs you've applied for</p>
       </div>

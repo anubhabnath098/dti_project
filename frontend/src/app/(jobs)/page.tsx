@@ -27,7 +27,7 @@ export default function JobsPage() {
 
   // Otherwise, show the worker view with job listings
   return (
-    <div className="container mx-auto py-12 px-4 md:px-6">
+    <div className="container mx-auto py-16 px-4 md:px-6">
       <div className="space-y-8">
         <div className="space-y-2">
           <div className="flex justify-between items-center">
